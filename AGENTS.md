@@ -35,7 +35,7 @@ This repository is the unpacked extension source. Edit these files directly and 
 - Popup injects/messages `content.js`.
 - Content script scrapes Slack DOM.
 - Export flow:
-  - first normalize the channel to newest/bottom even if the user starts from an arbitrary scroll position
+  - first normalize the channel to newest/bottom even if the user starts from an arbitrary scroll position; this positioning phase should not harvest messages or threads
   - collect currently loaded messages
   - collect visible thread replies beside their parent messages as each page is encountered
   - scroll the main Slack virtual list upward to collect older history

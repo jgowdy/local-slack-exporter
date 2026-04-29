@@ -487,25 +487,18 @@
     return keys[keys.length - 1] || '';
   }
 
-  async function scrollToChannelBottom(scroller, messages, options) {
+  async function scrollToChannelBottom(scroller, options) {
     setPhase('moving to newest messages');
     let sameWindow = 0;
     let bottomClamped = 0;
     let lastWindowSignature = visibleWindowSignature();
-    const maxStartupPages = Math.min(options.maxScrollPasses, 250);
+    const maxStartupJumps = 30;
 
-    for (let page = 1; page <= maxStartupPages && !stopRequested; page++) {
-      mergeMessages(messages, findMessageElements(), 'channel');
-      rememberVisibleThreadParents();
-
+    for (let jump = 1; jump <= maxStartupJumps && !stopRequested; jump++) {
       const beforeTop = scroller.scrollTop;
-      const step = channelScrollStep(scroller, options);
-      const moved = scrollChannelBy(scroller, step);
-      await interruptibleSleep(Math.max(250, Math.floor(options.scrollDelayMs * 0.6)) + Math.floor(Math.random() * 150));
+      scroller.scrollTop = scroller.scrollHeight;
+      await interruptibleSleep(Math.max(250, Math.floor(options.scrollDelayMs * 0.45)) + Math.floor(Math.random() * 100));
       if (stopRequested) break;
-
-      mergeMessages(messages, findMessageElements(), 'channel');
-      rememberVisibleThreadParents();
 
       const currentWindowSignature = visibleWindowSignature();
       const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
@@ -513,11 +506,12 @@
       lastWindowSignature = currentWindowSignature || lastWindowSignature;
 
       const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      const moved = Math.abs(scroller.scrollTop - beforeTop);
       const bottomClampSignal = atBottom || (moved < 2 && Math.abs(scroller.scrollTop - beforeTop) < 2);
       bottomClamped = bottomClampSignal ? bottomClamped + 1 : 0;
 
       status(`Moving to newest messages before export...\n${progressLines({
-        'Page': `${page}/${maxStartupPages}`,
+        'Jump': `${jump}/${maxStartupJumps}`,
         'Same visible page': `${sameWindow}/6`,
         'Bottom clamp': `${bottomClamped}/2`
       })}`);
@@ -932,12 +926,17 @@
         repliesCollected: 0
       };
 
-      status(`Collecting currently loaded messages...\n${progressLines()}`);
-      mergeMessages(messages, findMessageElements(), 'channel');
-      rememberVisibleThreadParents();
+      status(`Moving to newest messages before export...\n${progressLines()}`);
+      await scrollToChannelBottom(scroller, options);
+      if (stopRequested) setPhase('stopping');
 
-      await scrollToChannelBottom(scroller, messages, options);
-      await scrollToOldest(scroller, messages, options);
+      if (!stopRequested) {
+        status(`Collecting currently loaded messages...\n${progressLines()}`);
+        mergeMessages(messages, findMessageElements(), 'channel');
+        rememberVisibleThreadParents();
+      }
+
+      if (!stopRequested) await scrollToOldest(scroller, messages, options);
       if (!stopRequested) await scrollToNewestAndCollect(scroller, messages, options);
       if (stopRequested) setPhase('stopping');
       else setPhase('done');
@@ -946,7 +945,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.12',
+          version: '0.3.13',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1181,7 +1180,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.12',
+        version: '0.3.13',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
