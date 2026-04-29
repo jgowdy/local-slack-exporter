@@ -16,6 +16,7 @@
   let activeMessages = null;
   let activeStats = null;
   let activeThreadParentKeys = null;
+  let activeProcessedThreadKeys = null;
 
   function currentState() {
     return {
@@ -69,6 +70,18 @@
     return lines.join('\n');
   }
 
+  function visibleWindowSignature() {
+    return findMessageElements()
+      .map((element) => {
+        const ts = timestampFromElement(element) || '';
+        const key = element.getAttribute('data-item-key') || element.closest('[data-item-key]')?.getAttribute('data-item-key') || '';
+        const textHash = stableHash(messageTextFromElement(element) || textOf(element)).slice(0, 10);
+        return `${ts || key || textHash}`;
+      })
+      .filter(Boolean)
+      .join('|');
+  }
+
   function threadParentKey(element) {
     const ts = timestampFromElement(element);
     if (ts) return ts;
@@ -87,6 +100,24 @@
     }
     activeStats.threadParentsDiscovered = activeThreadParentKeys.size;
     return parents;
+  }
+
+  function mapKeyForMessage(message) {
+    return message.ts || message.id;
+  }
+
+  function mergeThreadIntoParent(messages, parentElement, replies) {
+    const parsed = parseMessage(parentElement, 0, 'channel');
+    const key = mapKeyForMessage(parsed);
+    const existing = messages.get(key) || parsed;
+    messages.set(key, {
+      ...existing,
+      ...parsed,
+      has_thread: true,
+      thread_reply_count: replies.length,
+      thread_replies: replies
+    });
+    return key;
   }
 
   function status(text, done = false) {
@@ -398,8 +429,9 @@
 
   function parseMessage(element, index, source) {
     const ts = timestampFromElement(element);
+    const fallbackHash = stableHash(`${userFromElement(element) || ''}\n${messageTextFromElement(element) || textOf(element)}`).slice(0, 12);
     return {
-      id: ts || `${source}-${index}-${stableHash(textOf(element)).slice(0, 12)}`,
+      id: ts || `${source}-${fallbackHash}`,
       ts,
       user: userFromElement(element),
       text: messageTextFromElement(element),
@@ -458,12 +490,16 @@
   async function scrollToOldest(scroller, messages, options) {
     setPhase('collecting older history');
     let noProgress = 0;
+    let sameWindow = 0;
     let lastCount = messages.size;
     let lastOldest = oldestVisibleKey();
     let lastHeight = scroller.scrollHeight;
+    let lastWindowSignature = visibleWindowSignature();
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       mergeMessages(messages, findMessageElements(), 'channel');
+      if (options.includeThreads) await collectVisibleThreads(messages, options, `older page ${pass}`);
+      if (stopRequested) break;
       const beforeTop = scroller.scrollTop;
       const step = channelScrollStep(scroller, options);
       const moved = scrollChannelBy(scroller, -step);
@@ -475,20 +511,25 @@
       const count = messages.size;
       const currentOldest = oldestVisibleKey();
       const currentHeight = scroller.scrollHeight;
-      const progressed = count > lastCount || (currentOldest && currentOldest !== lastOldest) || Math.abs(currentHeight - lastHeight) > 20;
+      const currentWindowSignature = visibleWindowSignature();
+      const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
+      const progressed = count > lastCount || (currentOldest && currentOldest !== lastOldest) || Math.abs(currentHeight - lastHeight) > 20 || visibleWindowChanged;
       const physicallyStalled = scroller.scrollTop <= 2 || moved < 2 || Math.abs(scroller.scrollTop - beforeTop) < 2;
 
       noProgress = progressed ? 0 : noProgress + 1;
+      sameWindow = visibleWindowChanged ? 0 : sameWindow + 1;
       lastCount = count;
       lastOldest = currentOldest || lastOldest;
       lastHeight = currentHeight;
+      lastWindowSignature = currentWindowSignature || lastWindowSignature;
 
       status(`Loading older channel history...\n${progressLines({
         'Page': `${pass}/${options.maxScrollPasses}`,
-        'No-growth pages': `${noProgress}/${options.settlePasses}`
+        'No-growth pages': `${noProgress}/${options.settlePasses}`,
+        'Same visible page': `${sameWindow}/12`
       })}`);
 
-      if (noProgress >= options.settlePasses && physicallyStalled) {
+      if ((noProgress >= options.settlePasses && physicallyStalled) || sameWindow >= 12) {
         status(`Reached apparent top of channel history.\nMessages seen: ${messages.size}`);
         break;
       }
@@ -499,12 +540,16 @@
   async function scrollToNewestAndCollect(scroller, messages, options) {
     setPhase('collecting newer history');
     let noProgress = 0;
+    let sameWindow = 0;
     let lastCount = messages.size;
     let lastNewest = newestVisibleKey();
     let lastHeight = scroller.scrollHeight;
+    let lastWindowSignature = visibleWindowSignature();
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       mergeMessages(messages, findMessageElements(), 'channel');
+      if (options.includeThreads) await collectVisibleThreads(messages, options, `newer page ${pass}`);
+      if (stopRequested) break;
       const beforeTop = scroller.scrollTop;
       const step = channelScrollStep(scroller, options);
       const moved = scrollChannelBy(scroller, step);
@@ -516,20 +561,25 @@
       const count = messages.size;
       const currentNewest = newestVisibleKey();
       const currentHeight = scroller.scrollHeight;
-      const progressed = count > lastCount || (currentNewest && currentNewest !== lastNewest) || Math.abs(currentHeight - lastHeight) > 20;
+      const currentWindowSignature = visibleWindowSignature();
+      const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
+      const progressed = count > lastCount || (currentNewest && currentNewest !== lastNewest) || Math.abs(currentHeight - lastHeight) > 20 || visibleWindowChanged;
       const physicallyStalled = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4 || moved < 2 || Math.abs(scroller.scrollTop - beforeTop) < 2;
 
       noProgress = progressed ? 0 : noProgress + 1;
+      sameWindow = visibleWindowChanged ? 0 : sameWindow + 1;
       lastCount = count;
       lastNewest = currentNewest || lastNewest;
       lastHeight = currentHeight;
+      lastWindowSignature = currentWindowSignature || lastWindowSignature;
 
       status(`Collecting channel history newest-ward...\n${progressLines({
         'Page': `${pass}/${options.maxScrollPasses}`,
-        'No-growth pages': `${noProgress}/${options.settlePasses}`
+        'No-growth pages': `${noProgress}/${options.settlePasses}`,
+        'Same visible page': `${sameWindow}/12`
       })}`);
 
-      if (noProgress >= options.settlePasses && physicallyStalled) break;
+      if ((noProgress >= options.settlePasses && physicallyStalled) || sameWindow >= 12) break;
       if (noProgress >= options.settlePasses * 2) break;
     }
   }
@@ -647,6 +697,47 @@
       if (!reply.ts && reply.text === parentText) return false;
       return true;
     });
+  }
+
+  async function collectVisibleThreads(messages, options, pageLabel) {
+    if (!options.includeThreads || !activeProcessedThreadKeys) return;
+
+    const previousPhase = activeStats?.phase || '';
+    setPhase('collecting visible threads');
+    const parents = rememberVisibleThreadParents();
+
+    for (const parent of parents) {
+      if (stopRequested) break;
+      const parentKey = threadParentKey(parent);
+      if (!parentKey || activeProcessedThreadKeys.has(parentKey)) continue;
+      if (!threadButtonFromElement(parent, { allowHidden: true })) continue;
+
+      const parsed = parseMessage(parent, 0, 'channel');
+      const key = mapKeyForMessage(parsed);
+      activeProcessedThreadKeys.add(parentKey);
+
+      if (activeStats) {
+        activeStats.threadParentsProcessed = activeProcessedThreadKeys.size;
+        activeStats.threadParentsDiscovered = Math.max(activeStats.threadParentsDiscovered, activeThreadParentKeys?.size || 0, activeProcessedThreadKeys.size);
+      }
+
+      status(`Collecting thread replies in place...\n${progressLines({
+        'Page': pageLabel,
+        'Current parent': `${parsed.user || 'unknown'} - ${(parsed.text || '').slice(0, 120)}`
+      })}`);
+
+      const replies = await collectThreadForElement(parent, parentKey, options);
+      mergeThreadIntoParent(messages, parent, sortMessages(new Map(replies.map((reply) => [mapKeyForMessage(reply), reply]))));
+      if (activeStats) activeStats.repliesCollected += replies.length;
+
+      status(`Collected thread beside parent message.\n${progressLines({
+        'Page': pageLabel,
+        'Last parent replies': replies.length
+      })}`);
+      await interruptibleSleep(Math.max(200, Math.floor(options.scrollDelayMs * 0.5)));
+    }
+
+    if (previousPhase) setPhase(previousPhase);
   }
 
   async function collectThreads(scroller, messages, options) {
@@ -770,6 +861,7 @@
       const messages = new Map();
       activeMessages = messages;
       activeThreadParentKeys = new Set();
+      activeProcessedThreadKeys = new Set();
       activeStats = {
         phase: 'starting',
         threadParentsDiscovered: 0,
@@ -783,7 +875,6 @@
 
       await scrollToOldest(scroller, messages, options);
       if (!stopRequested) await scrollToNewestAndCollect(scroller, messages, options);
-      if (!stopRequested && options.includeThreads) await collectThreads(scroller, messages, options);
       if (stopRequested) setPhase('stopping');
       else setPhase('done');
 
@@ -791,7 +882,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.8',
+          version: '0.3.9',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -817,6 +908,7 @@
       activeMessages = null;
       activeStats = null;
       activeThreadParentKeys = null;
+      activeProcessedThreadKeys = null;
     }
   }
 
@@ -1025,7 +1117,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.8',
+        version: '0.3.9',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },

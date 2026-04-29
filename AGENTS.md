@@ -36,9 +36,9 @@ This repository is the unpacked extension source. Edit these files directly and 
 - Content script scrapes Slack DOM.
 - Export flow:
   - collect currently loaded messages
+  - collect visible thread replies beside their parent messages as each page is encountered
   - scroll the main Slack virtual list upward to collect older history
   - scroll downward/newest-ward to collect newer history
-  - run a thread pass
 - Message identity should primarily use Slack timestamps from:
   - `data-msg-ts`
   - `data-item-key`
@@ -110,8 +110,8 @@ Scroll container:
 
 ### Thread Capture
 
-- Thread replies may be collected in a second pass after main messages.
-- Final JSON should still nest replies adjacent to parent messages.
+- Thread replies should be collected as parent messages are encountered, not only in a deferred full second pass.
+- Final JSON should nest replies directly under their parent messages.
 - Avoid storing DOM element references across major scrolls because Slack virtualizes/recycles nodes.
 - In the thread pass, for each visible parent with a reply count/bar:
   - scroll parent into view
