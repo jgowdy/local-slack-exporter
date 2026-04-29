@@ -3,8 +3,8 @@
 
   const DEFAULT_OPTIONS = {
     includeThreads: true,
-    scrollDelayMs: 900,
-    maxScrollPasses: 1000,
+    scrollDelayMs: 500,
+    maxScrollPasses: 10000,
     settlePasses: 100,
     maxThreadScrollPasses: 120,
     channelScrollFraction: 0.92
@@ -913,7 +913,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.21',
+          version: '0.3.22',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1149,7 +1149,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.21',
+        version: '0.3.22',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },

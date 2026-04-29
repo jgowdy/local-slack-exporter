@@ -8,8 +8,8 @@ let localRunning = false;
 function readOptions() {
   return {
     includeThreads: document.getElementById('includeThreads').checked,
-    scrollDelayMs: Number(document.getElementById('scrollDelayMs').value) || 900,
-    maxScrollPasses: Number(document.getElementById('maxScrollPasses').value) || 1000,
+    scrollDelayMs: Number(document.getElementById('scrollDelayMs').value) || 500,
+    maxScrollPasses: Number(document.getElementById('maxScrollPasses').value) || 10000,
     settlePasses: Number(document.getElementById('settlePasses').value) || 100,
     channelScrollFraction: 1.15,
     maxThreadScrollPasses: 120
