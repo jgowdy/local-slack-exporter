@@ -137,6 +137,7 @@ Thread pane detection should consider:
 
 - Backscroll should use viewport/page-size jumps, not tiny nudges.
 - Top-of-channel detection should combine:
+  - selected message scroller clamped at `scrollTop <= 2`
   - no growth in message count
   - no new oldest timestamp
   - little/no change in scroll height

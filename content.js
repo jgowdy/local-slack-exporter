@@ -491,6 +491,7 @@
     setPhase('collecting older history');
     let noProgress = 0;
     let sameWindow = 0;
+    let topClamped = 0;
     let lastCount = messages.size;
     let lastOldest = oldestVisibleKey();
     let lastHeight = scroller.scrollHeight;
@@ -515,9 +516,11 @@
       const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
       const progressed = count > lastCount || (currentOldest && currentOldest !== lastOldest) || Math.abs(currentHeight - lastHeight) > 20 || visibleWindowChanged;
       const physicallyStalled = scroller.scrollTop <= 2 || moved < 2 || Math.abs(scroller.scrollTop - beforeTop) < 2;
+      const topClampSignal = beforeTop <= 2 && scroller.scrollTop <= 2 && moved < 2 && (!currentOldest || currentOldest === lastOldest);
 
       noProgress = progressed ? 0 : noProgress + 1;
       sameWindow = visibleWindowChanged ? 0 : sameWindow + 1;
+      topClamped = topClampSignal ? topClamped + 1 : 0;
       lastCount = count;
       lastOldest = currentOldest || lastOldest;
       lastHeight = currentHeight;
@@ -526,10 +529,11 @@
       status(`Loading older channel history...\n${progressLines({
         'Page': `${pass}/${options.maxScrollPasses}`,
         'No-growth pages': `${noProgress}/${options.settlePasses}`,
-        'Same visible page': `${sameWindow}/12`
+        'Same visible page': `${sameWindow}/12`,
+        'Top clamp': `${topClamped}/2`
       })}`);
 
-      if ((noProgress >= options.settlePasses && physicallyStalled) || sameWindow >= 12) {
+      if (topClamped >= 2 || (noProgress >= options.settlePasses && physicallyStalled) || sameWindow >= 12) {
         status(`Reached apparent top of channel history.\nMessages seen: ${messages.size}`);
         break;
       }
@@ -882,7 +886,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.9',
+          version: '0.3.10',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1117,7 +1121,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.9',
+        version: '0.3.10',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
