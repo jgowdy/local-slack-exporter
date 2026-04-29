@@ -961,7 +961,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.19',
+          version: '0.3.20',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1197,7 +1197,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.19',
+        version: '0.3.20',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
