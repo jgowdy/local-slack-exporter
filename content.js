@@ -147,6 +147,35 @@
     return normalized;
   }
 
+  function messageRowForElement(element) {
+    if (!element) return null;
+    return element.closest('[data-qa="virtual-list-item"], .c-virtual_list__item')
+      || element.closest('[data-qa="message_container"], .c-message_kit__background')
+      || element;
+  }
+
+  function findVisibleThreadParentElements(root = document) {
+    const selector = [
+      '[data-qa="reply_bar"]',
+      'button[data-qa="reply_bar_count"]',
+      '[data-qa="reply_bar_count"]',
+      '[data-qa="reply_count"]',
+      '[data-qa="thread_reply_bar"]'
+    ].join(', ');
+    const candidates = [...root.querySelectorAll(selector)];
+    const seen = new Set();
+    const parents = [];
+
+    for (const candidate of candidates) {
+      const row = messageRowForElement(candidate);
+      if (!row || seen.has(row) || !visible(row)) continue;
+      seen.add(row);
+      parents.push(row);
+    }
+
+    return parents;
+  }
+
   function findChannelName() {
     const titleSelectors = [
       '[data-qa="channel_name"]',
@@ -240,15 +269,34 @@
       .filter((a) => a.href && !a.href.includes('/archives/'));
   }
 
-  function threadButtonFromElement(element) {
-    const exact = element.querySelector('button[data-qa="reply_bar_count"]');
-    if (exact && visible(exact)) return exact;
+  function looksLikeThreadCountControl(element) {
+    const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${textOf(element)}`;
+    return /\b\d+\b/.test(label) && /\brepl(?:y|ies)\b|\bthread\b/i.test(label);
+  }
 
-    const replyBarButton = element.querySelector('[data-qa="reply_bar"] button');
-    if (replyBarButton && visible(replyBarButton)) return replyBarButton;
+  function threadButtonFromElement(element, options = {}) {
+    const root = messageRowForElement(element) || element;
+    const allowHidden = Boolean(options.allowHidden);
+    const exactSelectors = [
+      'button[data-qa="reply_bar_count"]',
+      '[role="button"][data-qa="reply_bar_count"]',
+      '[data-qa="reply_bar"] button',
+      '[data-qa="reply_bar"] [role="button"]',
+      '[data-qa="reply_count"] button',
+      '[data-qa="reply_count"] [role="button"]',
+      '[data-qa="thread_reply_bar"] button',
+      '[data-qa="thread_reply_bar"] [role="button"]'
+    ];
 
-    const replyBarRoleButton = element.querySelector('[data-qa="reply_bar"] [role="button"]');
-    if (replyBarRoleButton && visible(replyBarRoleButton)) return replyBarRoleButton;
+    for (const selector of exactSelectors) {
+      const control = root.querySelector(selector);
+      if (control && (allowHidden || visible(control))) return control;
+    }
+
+    const labelCandidates = root.querySelectorAll('button[aria-label*="repl" i], a[aria-label*="repl" i], [role="button"][aria-label*="repl" i], button[aria-label*="thread" i], [role="button"][aria-label*="thread" i]');
+    for (const control of labelCandidates) {
+      if (looksLikeThreadCountControl(control) && (allowHidden || visible(control))) return control;
+    }
 
     return null;
   }
@@ -472,18 +520,20 @@
   }
 
   async function collectThreadForElement(element, parentKey, options) {
-    const button = threadButtonFromElement(element);
-    if (!button) return [];
+    const row = messageRowForElement(element) || element;
 
-    element.scrollIntoView({ block: 'center', behavior: 'auto' });
-    humanHover(element);
+    row.scrollIntoView({ block: 'center', behavior: 'auto' });
+    humanHover(row);
     await new Promise(requestAnimationFrame);
     await new Promise(requestAnimationFrame);
     await interruptibleSleep(Math.max(250, Math.floor(options.scrollDelayMs * 0.45)));
     if (stopRequested) return [];
 
+    const button = threadButtonFromElement(row) || threadButtonFromElement(row, { allowHidden: true });
+    if (!button) return [];
+
     let pane = null;
-    humanHover(element);
+    humanHover(row);
     humanClick(button);
     for (let i = 0; i < 30 && !stopRequested; i++) {
       await interruptibleSleep(150);
@@ -522,8 +572,8 @@
       }
     }
 
-    const parentText = messageTextFromElement(element);
-    const parentTs = timestampFromElement(element);
+    const parentText = messageTextFromElement(row);
+    const parentTs = timestampFromElement(row);
     return [...replies.values()].filter((reply) => {
       if (!reply.text && !reply.user) return false;
       // Slack panes usually include the parent message at the top; remove that row only.
@@ -545,7 +595,12 @@
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       const elements = findMessageElements();
-      const visibleThreadParents = elements.filter((element) => threadButtonFromElement(element));
+      const visibleThreadParents = findVisibleThreadParentElements();
+      for (const element of elements) {
+        if (!threadButtonFromElement(element, { allowHidden: true })) continue;
+        const row = messageRowForElement(element) || element;
+        if (!visibleThreadParents.includes(row) && visible(row)) visibleThreadParents.push(row);
+      }
       if (activeStats) activeStats.threadParentsDiscovered = Math.max(activeStats.threadParentsDiscovered, processed.size + visibleThreadParents.length);
 
       for (const element of visibleThreadParents) {
@@ -665,7 +720,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.6',
+          version: '0.3.7',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -789,6 +844,7 @@
       '[data-qa="message_container"]',
       '[data-qa="message-text"]',
       '[data-qa="reply_bar"]',
+      '[data-qa="reply_bar_count"]',
       '[data-qa="reply_count"]',
       '[data-qa="thread_reply_bar"]',
       '[data-qa="thread_view"]',
@@ -897,7 +953,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.6',
+        version: '0.3.7',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
