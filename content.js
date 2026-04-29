@@ -499,7 +499,7 @@
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       mergeMessages(messages, findMessageElements(), 'channel');
-      if (options.includeThreads) await collectVisibleThreads(messages, options, `older page ${pass}`);
+      if (options.includeThreads) await collectVisibleThreads(messages, options, `${pass}/${options.maxScrollPasses}`);
       if (stopRequested) break;
       const beforeTop = scroller.scrollTop;
       const step = channelScrollStep(scroller, options);
@@ -552,7 +552,7 @@
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       mergeMessages(messages, findMessageElements(), 'channel');
-      if (options.includeThreads) await collectVisibleThreads(messages, options, `newer page ${pass}`);
+      if (options.includeThreads) await collectVisibleThreads(messages, options, `${pass}/${options.maxScrollPasses}`);
       if (stopRequested) break;
       const beforeTop = scroller.scrollTop;
       const step = channelScrollStep(scroller, options);
@@ -639,7 +639,17 @@
     return null;
   }
 
-  async function collectThreadForElement(element, parentKey, options) {
+  function filteredThreadReplies(replies, parentText, parentTs) {
+    return [...replies.values()].filter((reply) => {
+      if (!reply.text && !reply.user) return false;
+      // Slack panes usually include the parent message at the top; remove that row only.
+      if (parentTs && reply.ts === parentTs) return false;
+      if (!reply.ts && reply.text === parentText) return false;
+      return true;
+    });
+  }
+
+  async function collectThreadForElement(element, parentKey, options, onProgress) {
     const row = messageRowForElement(element) || element;
 
     row.scrollIntoView({ block: 'center', behavior: 'auto' });
@@ -663,17 +673,30 @@
     if (!pane) return [];
     const scroller = findThreadScroller(pane);
     const replies = new Map();
+    const parentText = messageTextFromElement(row);
+    const parentTs = timestampFromElement(row);
+    let lastReportedReplyCount = 0;
+
+    function reportReplyProgress() {
+      const currentReplyCount = filteredThreadReplies(replies, parentText, parentTs).length;
+      if (currentReplyCount > lastReportedReplyCount && typeof onProgress === 'function') {
+        onProgress(currentReplyCount - lastReportedReplyCount, currentReplyCount);
+      }
+      lastReportedReplyCount = currentReplyCount;
+    }
 
     scroller.scrollTop = 0;
     await interruptibleSleep(Math.max(300, Math.floor(options.scrollDelayMs * 0.6)));
     for (let pass = 0; pass < options.maxThreadScrollPasses && !stopRequested; pass++) {
       mergeMessages(replies, findMessageElements(pane), `thread:${parentKey}`);
+      reportReplyProgress();
       const before = scroller.scrollTop;
       const step = Math.max(500, Math.floor(scroller.clientHeight * 0.9));
       scrollChannelBy(scroller, step);
       await interruptibleSleep(options.scrollDelayMs);
       if (stopRequested) break;
       mergeMessages(replies, findMessageElements(pane), `thread:${parentKey}`);
+      reportReplyProgress();
       if (Math.abs(scroller.scrollTop - before) < 8 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 6) break;
     }
 
@@ -692,15 +715,7 @@
       }
     }
 
-    const parentText = messageTextFromElement(row);
-    const parentTs = timestampFromElement(row);
-    return [...replies.values()].filter((reply) => {
-      if (!reply.text && !reply.user) return false;
-      // Slack panes usually include the parent message at the top; remove that row only.
-      if (parentTs && reply.ts === parentTs) return false;
-      if (!reply.ts && reply.text === parentText) return false;
-      return true;
-    });
+    return filteredThreadReplies(replies, parentText, parentTs);
   }
 
   async function collectVisibleThreads(messages, options, pageLabel) {
@@ -730,9 +745,14 @@
         'Current parent': `${parsed.user || 'unknown'} - ${(parsed.text || '').slice(0, 120)}`
       })}`);
 
-      const replies = await collectThreadForElement(parent, parentKey, options);
+      const replies = await collectThreadForElement(parent, parentKey, options, (newReplies, currentReplyCount) => {
+        if (activeStats) activeStats.repliesCollected += newReplies;
+        status(`Collecting thread replies in place...\n${progressLines({
+          'Page': pageLabel,
+          'Current parent replies': currentReplyCount
+        })}`);
+      });
       mergeThreadIntoParent(messages, parent, sortMessages(new Map(replies.map((reply) => [mapKeyForMessage(reply), reply]))));
-      if (activeStats) activeStats.repliesCollected += replies.length;
 
       status(`Collected thread beside parent message.\n${progressLines({
         'Page': pageLabel,
@@ -886,7 +906,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.10',
+          version: '0.3.11',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1121,7 +1141,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.10',
+        version: '0.3.11',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
