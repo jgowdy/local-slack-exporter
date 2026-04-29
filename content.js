@@ -487,6 +487,45 @@
     return keys[keys.length - 1] || '';
   }
 
+  async function scrollToChannelBottom(scroller, messages, options) {
+    setPhase('moving to newest messages');
+    let sameWindow = 0;
+    let bottomClamped = 0;
+    let lastWindowSignature = visibleWindowSignature();
+    const maxStartupPages = Math.min(options.maxScrollPasses, 250);
+
+    for (let page = 1; page <= maxStartupPages && !stopRequested; page++) {
+      mergeMessages(messages, findMessageElements(), 'channel');
+      rememberVisibleThreadParents();
+
+      const beforeTop = scroller.scrollTop;
+      const step = channelScrollStep(scroller, options);
+      const moved = scrollChannelBy(scroller, step);
+      await interruptibleSleep(Math.max(250, Math.floor(options.scrollDelayMs * 0.6)) + Math.floor(Math.random() * 150));
+      if (stopRequested) break;
+
+      mergeMessages(messages, findMessageElements(), 'channel');
+      rememberVisibleThreadParents();
+
+      const currentWindowSignature = visibleWindowSignature();
+      const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
+      sameWindow = visibleWindowChanged ? 0 : sameWindow + 1;
+      lastWindowSignature = currentWindowSignature || lastWindowSignature;
+
+      const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      const bottomClampSignal = atBottom || (moved < 2 && Math.abs(scroller.scrollTop - beforeTop) < 2);
+      bottomClamped = bottomClampSignal ? bottomClamped + 1 : 0;
+
+      status(`Moving to newest messages before export...\n${progressLines({
+        'Page': `${page}/${maxStartupPages}`,
+        'Same visible page': `${sameWindow}/6`,
+        'Bottom clamp': `${bottomClamped}/2`
+      })}`);
+
+      if (bottomClamped >= 2 || sameWindow >= 6) break;
+    }
+  }
+
   async function scrollToOldest(scroller, messages, options) {
     setPhase('collecting older history');
     let noProgress = 0;
@@ -897,6 +936,7 @@
       mergeMessages(messages, findMessageElements(), 'channel');
       rememberVisibleThreadParents();
 
+      await scrollToChannelBottom(scroller, messages, options);
       await scrollToOldest(scroller, messages, options);
       if (!stopRequested) await scrollToNewestAndCollect(scroller, messages, options);
       if (stopRequested) setPhase('stopping');
@@ -906,7 +946,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.11',
+          version: '0.3.12',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1141,7 +1181,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.11',
+        version: '0.3.12',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
