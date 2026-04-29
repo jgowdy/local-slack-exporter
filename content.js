@@ -4,8 +4,8 @@
   const DEFAULT_OPTIONS = {
     includeThreads: true,
     scrollDelayMs: 900,
-    maxScrollPasses: 800,
-    settlePasses: 8,
+    maxScrollPasses: 1000,
+    settlePasses: 100,
     maxThreadScrollPasses: 120,
     channelScrollFraction: 0.92
   };
@@ -15,6 +15,7 @@
   let lastStatus = 'Idle.';
   let activeMessages = null;
   let activeStats = null;
+  let activeThreadParentKeys = null;
 
   function currentState() {
     return {
@@ -66,6 +67,26 @@
     }
     for (const [label, value] of Object.entries(extra)) lines.push(`${label}: ${value}`);
     return lines.join('\n');
+  }
+
+  function threadParentKey(element) {
+    const ts = timestampFromElement(element);
+    if (ts) return ts;
+    const itemKey = element.getAttribute('data-item-key') || element.closest('[data-item-key]')?.getAttribute('data-item-key');
+    if (itemKey) return itemKey;
+    return stableHash(`${userFromElement(element) || ''}\n${messageTextFromElement(element) || textOf(element)}`).slice(0, 16);
+  }
+
+  function rememberVisibleThreadParents(root = document) {
+    const parents = findVisibleThreadParentElements(root);
+    if (!activeStats || !activeThreadParentKeys) return parents;
+
+    for (const parent of parents) {
+      const key = threadParentKey(parent);
+      if (key) activeThreadParentKeys.add(key);
+    }
+    activeStats.threadParentsDiscovered = activeThreadParentKeys.size;
+    return parents;
   }
 
   function status(text, done = false) {
@@ -155,14 +176,23 @@
   }
 
   function findVisibleThreadParentElements(root = document) {
-    const selector = [
+    const structuralSelector = [
       '[data-qa="reply_bar"]',
       'button[data-qa="reply_bar_count"]',
       '[data-qa="reply_bar_count"]',
       '[data-qa="reply_count"]',
-      '[data-qa="thread_reply_bar"]'
+      '[data-qa="thread_reply_bar"]',
+      'button[aria-label*="repl" i]',
+      'a[aria-label*="repl" i]',
+      '[role="button"][aria-label*="repl" i]',
+      'button[aria-label*="thread" i]',
+      'a[aria-label*="thread" i]',
+      '[role="button"][aria-label*="thread" i]'
     ].join(', ');
-    const candidates = [...root.querySelectorAll(selector)];
+    const candidates = [...root.querySelectorAll(structuralSelector)].filter((candidate) => {
+      const qa = candidate.getAttribute('data-qa') || '';
+      return /reply|thread/i.test(qa) || looksLikeThreadCountControl(candidate);
+    });
     const seen = new Set();
     const parents = [];
 
@@ -173,7 +203,27 @@
       parents.push(row);
     }
 
+    for (const row of findMessageRows(root)) {
+      if (seen.has(row) || !visible(row)) continue;
+      if (!rowLooksLikeThreadParent(row)) continue;
+      seen.add(row);
+      parents.push(row);
+    }
+
     return parents;
+  }
+
+  function findMessageRows(root = document) {
+    const rows = [];
+    const seen = new Set();
+    const selector = '[data-qa="virtual-list-item"], .c-virtual_list__item, [data-qa="message_container"], .c-message_kit__background';
+    for (const element of root.querySelectorAll(selector)) {
+      const row = messageRowForElement(element);
+      if (!row || seen.has(row)) continue;
+      seen.add(row);
+      rows.push(row);
+    }
+    return rows;
   }
 
   function findChannelName() {
@@ -271,7 +321,17 @@
 
   function looksLikeThreadCountControl(element) {
     const label = `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${textOf(element)}`;
-    return /\b\d+\b/.test(label) && /\brepl(?:y|ies)\b|\bthread\b/i.test(label);
+    return /\b\d+\b/.test(label) && /\brepl(?:y|ies)\b|\bthread\b|view\s+thread|see\s+thread/i.test(label);
+  }
+
+  function rowLooksLikeThreadParent(row) {
+    const labels = [...row.querySelectorAll('button, a, [role="button"], [aria-label], [title]')]
+      .map((element) => `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${textOf(element)}`)
+      .join(' ');
+    if (/\b\d+\s+repl(?:y|ies)\b|\brepl(?:y|ies)\s+\d+\b|\bview\s+thread\b|\bsee\s+thread\b/i.test(labels)) return true;
+
+    const rowText = textOf(row);
+    return /\b\d+\s+repl(?:y|ies)\b/i.test(rowText) && /\b(last reply|repl(?:y|ies))\b/i.test(rowText);
   }
 
   function threadButtonFromElement(element, options = {}) {
@@ -295,6 +355,10 @@
 
     const labelCandidates = root.querySelectorAll('button[aria-label*="repl" i], a[aria-label*="repl" i], [role="button"][aria-label*="repl" i], button[aria-label*="thread" i], [role="button"][aria-label*="thread" i]');
     for (const control of labelCandidates) {
+      if (looksLikeThreadCountControl(control) && (allowHidden || visible(control))) return control;
+    }
+
+    for (const control of root.querySelectorAll('button, a, [role="button"]')) {
       if (looksLikeThreadCountControl(control) && (allowHidden || visible(control))) return control;
     }
 
@@ -406,6 +470,7 @@
       await interruptibleSleep(options.scrollDelayMs + Math.floor(Math.random() * 250));
       if (stopRequested) break;
       mergeMessages(messages, findMessageElements(), 'channel');
+      rememberVisibleThreadParents();
 
       const count = messages.size;
       const currentOldest = oldestVisibleKey();
@@ -419,8 +484,8 @@
       lastHeight = currentHeight;
 
       status(`Loading older channel history...\n${progressLines({
-        'Pass': `${pass}/${options.maxScrollPasses}`,
-        'No-progress passes': `${noProgress}/${options.settlePasses}`
+        'Page': `${pass}/${options.maxScrollPasses}`,
+        'No-growth pages': `${noProgress}/${options.settlePasses}`
       })}`);
 
       if (noProgress >= options.settlePasses && physicallyStalled) {
@@ -446,6 +511,7 @@
       await interruptibleSleep(options.scrollDelayMs + Math.floor(Math.random() * 250));
       if (stopRequested) break;
       mergeMessages(messages, findMessageElements(), 'channel');
+      rememberVisibleThreadParents();
 
       const count = messages.size;
       const currentNewest = newestVisibleKey();
@@ -459,8 +525,8 @@
       lastHeight = currentHeight;
 
       status(`Collecting channel history newest-ward...\n${progressLines({
-        'Pass': `${pass}/${options.maxScrollPasses}`,
-        'No-progress passes': `${noProgress}/${options.settlePasses}`
+        'Page': `${pass}/${options.maxScrollPasses}`,
+        'No-growth pages': `${noProgress}/${options.settlePasses}`
       })}`);
 
       if (noProgress >= options.settlePasses && physicallyStalled) break;
@@ -595,13 +661,16 @@
 
     for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
       const elements = findMessageElements();
-      const visibleThreadParents = findVisibleThreadParentElements();
+      const visibleThreadParents = rememberVisibleThreadParents();
       for (const element of elements) {
         if (!threadButtonFromElement(element, { allowHidden: true })) continue;
         const row = messageRowForElement(element) || element;
         if (!visibleThreadParents.includes(row) && visible(row)) visibleThreadParents.push(row);
       }
-      if (activeStats) activeStats.threadParentsDiscovered = Math.max(activeStats.threadParentsDiscovered, processed.size + visibleThreadParents.length);
+      if (activeThreadParentKeys && activeStats) {
+        for (const parent of visibleThreadParents) activeThreadParentKeys.add(threadParentKey(parent));
+        activeStats.threadParentsDiscovered = activeThreadParentKeys.size;
+      }
 
       for (const element of visibleThreadParents) {
         if (stopRequested) break;
@@ -628,7 +697,7 @@
       }
 
       status(`Scanning for thread parents...\n${progressLines({
-        'Scroll pass': `${pass}/${options.maxScrollPasses}`
+        'Page': `${pass}/${options.maxScrollPasses}`
       })}`);
 
       const before = scroller.scrollTop;
@@ -700,6 +769,7 @@
       const scroller = findScrollableContainers();
       const messages = new Map();
       activeMessages = messages;
+      activeThreadParentKeys = new Set();
       activeStats = {
         phase: 'starting',
         threadParentsDiscovered: 0,
@@ -709,6 +779,7 @@
 
       status(`Collecting currently loaded messages...\n${progressLines()}`);
       mergeMessages(messages, findMessageElements(), 'channel');
+      rememberVisibleThreadParents();
 
       await scrollToOldest(scroller, messages, options);
       if (!stopRequested) await scrollToNewestAndCollect(scroller, messages, options);
@@ -720,7 +791,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.7',
+          version: '0.3.8',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -745,6 +816,7 @@
       stopRequested = false;
       activeMessages = null;
       activeStats = null;
+      activeThreadParentKeys = null;
     }
   }
 
@@ -953,7 +1025,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.7',
+        version: '0.3.8',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },

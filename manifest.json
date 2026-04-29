@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Slack Channel Exporter",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Fully local Slack channel exporter for messages and thread replies. No remote network access. Downloads JSON from the current Slack tab.",
   "permissions": [
     "activeTab",

@@ -9,8 +9,8 @@ function readOptions() {
   return {
     includeThreads: document.getElementById('includeThreads').checked,
     scrollDelayMs: Number(document.getElementById('scrollDelayMs').value) || 900,
-    maxScrollPasses: Number(document.getElementById('maxScrollPasses').value) || 800,
-    settlePasses: Number(document.getElementById('settlePasses').value) || 8,
+    maxScrollPasses: Number(document.getElementById('maxScrollPasses').value) || 1000,
+    settlePasses: Number(document.getElementById('settlePasses').value) || 100,
     channelScrollFraction: 1.15,
     maxThreadScrollPasses: 120
   };

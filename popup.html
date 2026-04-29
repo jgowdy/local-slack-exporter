@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <h1>Local Slack Exporter 0.3.7</h1>
+  <h1>Local Slack Exporter 0.3.8</h1>
 
   <div class="row">
     <input id="includeThreads" type="checkbox" checked>
@@ -27,11 +27,11 @@
   <label for="scrollDelayMs">Scroll/click delay, ms</label>
   <input id="scrollDelayMs" type="number" min="250" step="50" value="900">
 
-  <label for="maxScrollPasses">Max upward scroll passes</label>
-  <input id="maxScrollPasses" type="number" min="10" step="10" value="800">
+  <label for="maxScrollPasses">Max channel pages</label>
+  <input id="maxScrollPasses" type="number" min="10" step="10" value="1000">
 
-  <label for="settlePasses">Stop after this many no-growth passes</label>
-  <input id="settlePasses" type="number" min="3" step="1" value="8">
+  <label for="settlePasses">Stop after this many no-growth pages</label>
+  <input id="settlePasses" type="number" min="3" step="1" value="100">
 
   <button id="start">Export current channel</button>
   <button id="diagnostics">Export DOM diagnostics</button>
