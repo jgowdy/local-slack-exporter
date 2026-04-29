@@ -39,7 +39,7 @@ This repository is the unpacked extension source. Edit these files directly and 
   - collect currently loaded messages
   - collect visible thread replies beside their parent messages as each page is encountered
   - scroll the main Slack virtual list upward to collect older history
-  - scroll downward/newest-ward to collect newer history
+  - do not run a normal newest-ward second pass after the bottom-to-top harvest; starting from bottom makes that duplicative
 - Message identity should primarily use Slack timestamps from:
   - `data-msg-ts`
   - `data-item-key`

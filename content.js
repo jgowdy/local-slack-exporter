@@ -590,53 +590,6 @@
     }
   }
 
-  async function scrollToNewestAndCollect(scroller, messages, options) {
-    setPhase('collecting newer history');
-    let noProgress = 0;
-    let sameWindow = 0;
-    let lastCount = messages.size;
-    let lastNewest = newestVisibleKey();
-    let lastHeight = scroller.scrollHeight;
-    let lastWindowSignature = visibleWindowSignature();
-
-    for (let pass = 1; pass <= options.maxScrollPasses && !stopRequested; pass++) {
-      mergeMessages(messages, findMessageElements(), 'channel');
-      if (options.includeThreads) await collectVisibleThreads(messages, options, `${pass}/${options.maxScrollPasses}`);
-      if (stopRequested) break;
-      const beforeTop = scroller.scrollTop;
-      const step = channelScrollStep(scroller, options);
-      const moved = scrollChannelBy(scroller, step);
-      await interruptibleSleep(options.scrollDelayMs + Math.floor(Math.random() * 250));
-      if (stopRequested) break;
-      mergeMessages(messages, findMessageElements(), 'channel');
-      rememberVisibleThreadParents();
-
-      const count = messages.size;
-      const currentNewest = newestVisibleKey();
-      const currentHeight = scroller.scrollHeight;
-      const currentWindowSignature = visibleWindowSignature();
-      const visibleWindowChanged = currentWindowSignature && currentWindowSignature !== lastWindowSignature;
-      const progressed = count > lastCount || (currentNewest && currentNewest !== lastNewest) || Math.abs(currentHeight - lastHeight) > 20 || visibleWindowChanged;
-      const physicallyStalled = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4 || moved < 2 || Math.abs(scroller.scrollTop - beforeTop) < 2;
-
-      noProgress = progressed ? 0 : noProgress + 1;
-      sameWindow = visibleWindowChanged ? 0 : sameWindow + 1;
-      lastCount = count;
-      lastNewest = currentNewest || lastNewest;
-      lastHeight = currentHeight;
-      lastWindowSignature = currentWindowSignature || lastWindowSignature;
-
-      status(`Collecting conversation history newest-ward...\n${progressLines({
-        'Page': `${pass}/${options.maxScrollPasses}`,
-        'No-growth pages': `${noProgress}/${options.settlePasses}`,
-        'Same visible page': `${sameWindow}/12`
-      })}`);
-
-      if ((noProgress >= options.settlePasses && physicallyStalled) || sameWindow >= 12) break;
-      if (noProgress >= options.settlePasses * 2) break;
-    }
-  }
-
   function findThreadPane() {
     const selectors = [
       '[data-qa="thread_view"]',
@@ -953,7 +906,6 @@
       }
 
       if (!stopRequested) await scrollToOldest(scroller, messages, options);
-      if (!stopRequested) await scrollToNewestAndCollect(scroller, messages, options);
       if (stopRequested) setPhase('stopping');
       else setPhase('done');
 
@@ -961,7 +913,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.20',
+          version: '0.3.21',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1197,7 +1149,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.20',
+        version: '0.3.21',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },
