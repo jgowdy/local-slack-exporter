@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Local Slack Exporter</title>
+  <style>
+    body { font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; width: 360px; margin: 0; padding: 14px; color: #1d1c1d; }
+    h1 { font-size: 16px; margin: 0 0 10px; }
+    label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    input[type="number"] { width: 100%; box-sizing: border-box; padding: 6px; }
+    button { margin-top: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: #1264a3; color: white; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .row input { margin: 0; }
+    #status { white-space: pre-wrap; background: #f8f8f8; border: 1px solid #ddd; padding: 8px; min-height: 72px; margin-top: 12px; border-radius: 6px; }
+    .small { color: #616061; font-size: 12px; line-height: 1.35; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Local Slack Exporter 0.3.6</h1>
+
+  <div class="row">
+    <input id="includeThreads" type="checkbox" checked>
+    <label for="includeThreads" style="margin:0;font-weight:500;">Include thread replies</label>
+  </div>
+
+  <label for="scrollDelayMs">Scroll/click delay, ms</label>
+  <input id="scrollDelayMs" type="number" min="250" step="50" value="900">
+
+  <label for="maxScrollPasses">Max upward scroll passes</label>
+  <input id="maxScrollPasses" type="number" min="10" step="10" value="800">
+
+  <label for="settlePasses">Stop after this many no-growth passes</label>
+  <input id="settlePasses" type="number" min="3" step="1" value="8">
+
+  <button id="start">Export current channel</button>
+  <button id="diagnostics">Export DOM diagnostics</button>
+  <button id="stop" disabled>Stop</button>
+
+  <div id="status">Open the Slack channel you want to export, then click Export.</div>
+
+  <div class="small">
+    This extension does not request broad web access and contains no remote fetch, analytics, OAuth, or server upload code. Export is created in the Slack tab and downloaded as a local JSON file.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
