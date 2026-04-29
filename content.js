@@ -148,25 +148,41 @@
     return CSS && CSS.escape ? CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
+  function scrollerScore(element) {
+    const rect = element.getBoundingClientRect();
+    const qa = element.getAttribute('data-qa') || '';
+    const className = String(element.className || '');
+    const messageCount = findMessageElements(element).length;
+    const timestampCount = element.querySelectorAll('a[href*="/archives/"][href*="p"], a.c-timestamp, [data-ts]').length;
+    const messageContainerCount = element.querySelectorAll('[data-qa="message_container"], .c-message_kit__background').length;
+    const isSidebar = /sidebar|team_sidebar|channel_sidebar|list_browser|member_list|dm_browser/i.test(`${qa} ${className}`);
+    const centralPane = rect.left > Math.min(320, window.innerWidth * 0.28) && rect.width > Math.min(520, window.innerWidth * 0.42);
+    const slackScrollbar = qa === 'slack_kit_scrollbar' || className.includes('c-scrollbar__hider');
+
+    if (!visible(element) || isSidebar) return 0;
+    if (!messageCount && !messageContainerCount && !timestampCount) return 0;
+
+    return (messageCount * 5000)
+      + (messageContainerCount * 2500)
+      + (timestampCount * 250)
+      + (centralPane ? 2000 : -2500)
+      + (slackScrollbar ? 600 : 0)
+      + Math.min(1000, rect.width)
+      + Math.min(1000, rect.height);
+  }
+
   function findScrollableContainers() {
     const candidates = [...document.querySelectorAll('div, section, main')]
       .filter((el) => {
         const style = getComputedStyle(el);
         return /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 300;
       })
-      .sort((a, b) => {
-        const ar = a.getBoundingClientRect();
-        const br = b.getBoundingClientRect();
-        const scoreA = (a.scrollHeight - a.clientHeight) + ar.height;
-        const scoreB = (b.scrollHeight - b.clientHeight) + br.height;
-        return scoreB - scoreA;
-      });
+      .map((element) => ({ element, score: scrollerScore(element) }))
+      .filter((candidate) => candidate.score > 0)
+      .sort((a, b) => b.score - a.score);
 
-    const preferred = candidates.find((el) =>
-      el.querySelector('[data-qa="virtual-list-item"], [data-qa="message_container"], .c-virtual_list__item, .c-message_kit__background')
-    );
-
-    return preferred || candidates[0] || document.scrollingElement || document.documentElement;
+    if (candidates[0]) return candidates[0].element;
+    throw new Error('Could not find the Slack message pane. Open a conversation/channel and make sure the message area is visible before exporting.');
   }
 
   function findMessageElements(root = document) {
@@ -559,7 +575,7 @@
       lastHeight = currentHeight;
       lastWindowSignature = currentWindowSignature || lastWindowSignature;
 
-      status(`Loading older channel history...\n${progressLines({
+      status(`Loading older conversation history...\n${progressLines({
         'Page': `${pass}/${options.maxScrollPasses}`,
         'No-growth pages': `${noProgress}/${options.settlePasses}`,
         'Same visible page': `${sameWindow}/12`,
@@ -610,7 +626,7 @@
       lastHeight = currentHeight;
       lastWindowSignature = currentWindowSignature || lastWindowSignature;
 
-      status(`Collecting channel history newest-ward...\n${progressLines({
+      status(`Collecting conversation history newest-ward...\n${progressLines({
         'Page': `${pass}/${options.maxScrollPasses}`,
         'No-growth pages': `${noProgress}/${options.settlePasses}`,
         'Same visible page': `${sameWindow}/12`
@@ -945,7 +961,7 @@
         exported_at: new Date().toISOString(),
         exporter: {
           name: 'Local Slack Channel Exporter',
-          version: '0.3.13',
+          version: '0.3.14',
           locality: 'local-only-dom-scraper'
         },
         source_url: location.href,
@@ -1106,11 +1122,12 @@
           scrollHeight: Math.round(el.scrollHeight),
           clientHeight: Math.round(el.clientHeight),
           rectHeight: Math.round(rect.height),
-          message_descendants: findMessageElements(el).length
+          message_descendants: findMessageElements(el).length,
+          scroller_score: scrollerScore(el)
         };
       })
       .filter((item) => /(auto|scroll)/.test(item.overflowY) && item.scrollHeight > item.clientHeight + 80)
-      .sort((a, b) => (b.scrollHeight - b.clientHeight + b.message_descendants * 1000) - (a.scrollHeight - a.clientHeight + a.message_descendants * 1000))
+      .sort((a, b) => b.scroller_score - a.scroller_score || (b.scrollHeight - b.clientHeight + b.message_descendants * 1000) - (a.scrollHeight - a.clientHeight + a.message_descendants * 1000))
       .slice(0, 12);
   }
 
@@ -1180,7 +1197,7 @@
       exported_at: new Date().toISOString(),
       exporter: {
         name: 'Local Slack Channel Exporter',
-        version: '0.3.13',
+        version: '0.3.14',
         diagnostic_mode: true,
         privacy: 'message/user text redacted with length+hash fingerprints; URLs and media sources redacted'
       },

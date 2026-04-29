@@ -2,9 +2,9 @@
 
 ## Project
 
-Local Slack Channel Exporter is an original, fully local MV3 Chrome extension for exporting the currently open Slack channel from `app.slack.com` into local JSON suitable for LLM ingestion.
+Local Slack Channel Exporter is an original, fully local MV3 Chrome extension for exporting the currently open Slack conversation or channel from `app.slack.com` into local JSON suitable for LLM ingestion.
 
-The extension must export main channel messages and thread replies without network exfiltration, OAuth, analytics, backend services, or remote code. Output is created only through a local Blob/download in the Slack tab.
+The extension must export main conversation/channel messages and thread replies without network exfiltration, OAuth, analytics, backend services, or remote code. Output is created only through a local Blob/download in the Slack tab.
 
 This repository is the unpacked extension source. Edit these files directly and bump the patch version for every functional change so Chrome reloads are easy to verify. Do not create ZIPs or alternate generated extension copies unless explicitly requested.
 
@@ -35,7 +35,7 @@ This repository is the unpacked extension source. Edit these files directly and 
 - Popup injects/messages `content.js`.
 - Content script scrapes Slack DOM.
 - Export flow:
-  - first normalize the channel to newest/bottom even if the user starts from an arbitrary scroll position; this positioning phase should not harvest messages or threads
+  - first normalize the conversation/channel message pane to newest/bottom even if the user starts from an arbitrary scroll position; this positioning phase should not harvest messages or threads
   - collect currently loaded messages
   - collect visible thread replies beside their parent messages as each page is encountered
   - scroll the main Slack virtual list upward to collect older history

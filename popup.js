@@ -20,7 +20,7 @@ async function getSlackTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.id) throw new Error('No active tab found.');
   if (!tab.url || !/^https:\/\/[^/]+\.slack\.com\//.test(tab.url)) {
-    throw new Error('Open a Slack channel tab first.');
+    throw new Error('Open a Slack conversation or channel tab first.');
   }
   return tab;
 }
